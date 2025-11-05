@@ -6,43 +6,45 @@ app.use(express.json());
 
 const VERIFY_TOKEN = "ulpancoach2025";
 
-// ✅ Vérification du webhook Meta
+// Vérification du webhook Meta
 app.get("/", (req, res) => {
   const mode = req.query["hub.mode"];
   const token = req.query["hub.verify_token"];
   const challenge = req.query["hub.challenge"];
 
   if (mode === "subscribe" && token === VERIFY_TOKEN) {
-    console.log("✅ WEBHOOK VERIFIED");
+    console.log("WEBHOOK VERIFIED");
     res.status(200).send(challenge);
   } else {
     res.sendStatus(403);
   }
 });
 
-// ✅ Réception des messages et redirection vers Make
+// Réception des messages et redirection vers Make
 app.post("/", async (req, res) => {
-  console.log("📩 New event received:", JSON.stringify(req.body, null, 2));
+  console.log("New event received:", JSON.stringify(req.body, null, 2));
 
   try {
-    // Envoi des données à ton webhook Make
-    const response = await fetch("https://hook.eu2.make.com/jd72pv469vqw9wxho44udhs8l3gawl2", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(req.body),
-    });
+    const response = await fetch(
+      "https://hook.eu2.make.com/jd72pv469vqw9wxho44udhs8l3gawl2",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(req.body),
+      }
+    );
 
     if (!response.ok) {
-      console.error(⁠ ❌ Forwarding failed: ${response.statusText} ⁠);
+      console.error("Forwarding failed:", response.statusText);
     } else {
-      console.log("✅ Forwarded successfully to Make");
+      console.log("Forwarded successfully to Make");
     }
   } catch (err) {
-    console.error("🔥 Error forwarding to Make:", err.message);
+    console.error("Error forwarding to Make:", err.message);
   }
 
   res.sendStatus(200);
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(⁠`🚀 Server running on port ${PORT}`));
+app.listen(PORT, () => console.log("Server running on port " + PORT));
