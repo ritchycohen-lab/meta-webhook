@@ -26,7 +26,7 @@ app.post("/", async (req, res) => {
 
   try {
     const response = await fetch(
-      "https://hook.eu2.make.com/jd72pv469vqw9wxho44udhs8l3gawl2",
+      "https://hook.eu2.make.com/eoscb4ukkwrckg9se31rkvllu73uskmy",
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
