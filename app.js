@@ -149,14 +149,6 @@ try {
   console.error("❌ Error generating message:", err);
   return res.status(500).json({ error: "Internal server error" });
 }
-
-
-// TEMP: réponse de test
-return res.json({
-  status: "ok",
-  debug: "User loaded from Supabase",
-  user,
-});
   });
 
 app.listen(PORT, () => console.log("Server running on port " + PORT));
