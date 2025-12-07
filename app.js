@@ -63,21 +63,30 @@ app.post("/generate-message", async (req, res) => {
 
   console.log("🆕 Generate message for user:", user_id);
 
-  try {
-    // (1) Récupérer le user dans Supabase
-    // (2) Construire le prompt selon niveau / objectif / coach
-    // (3) Appeler OpenAI
-    // (4) Enregistrer le message dans Supabase
-    // (5) Retourner le message final à Make
+ // 1. Récupérer le user dans Supabase
+const { data: user, error } = await supabase
+  .from("users")
+  .select("*")
+  .eq("id", user_id)
+  .single();
 
-    return res.json({
-      status: "ok",
-      message: "generate-message endpoint opérationnel",
-    });
-  } catch (err) {
-    console.error("❌ Error generating message:", err);
-    return res.status(500).json({ error: "Internal server error" });
-  }
+if (error) {
+  console.error("❌ Supabase user fetch error:", error);
+  return res.status(500).json({ error: "Failed to fetch user" });
+}
+
+if (!user) {
+  console.error("❌ User not found in Supabase");
+  return res.status(404).json({ error: "User not found" });
+}
+
+console.log("✅ User loaded:", user);
+
+// TEMP: réponse de test
+return res.json({
+  status: "ok",
+  debug: "User loaded from Supabase",
+  user,
 });
 
 app.listen(PORT, () => console.log("Server running on port " + PORT));
