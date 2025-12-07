@@ -1,5 +1,11 @@
 import express from "express";
 import fetch from "node-fetch";
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
 const app = express();
 app.use(express.json());
@@ -47,4 +53,31 @@ app.post("/", async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
+// Endpoint pour générer un message UlpanCoach (V0)
+app.post("/generate-message", async (req, res) => {
+  const { user_id } = req.body;
+
+  if (!user_id) {
+    return res.status(400).json({ error: "Missing user_id" });
+  }
+
+  console.log("🆕 Generate message for user:", user_id);
+
+  try {
+    // (1) Récupérer le user dans Supabase
+    // (2) Construire le prompt selon niveau / objectif / coach
+    // (3) Appeler OpenAI
+    // (4) Enregistrer le message dans Supabase
+    // (5) Retourner le message final à Make
+
+    return res.json({
+      status: "ok",
+      message: "generate-message endpoint opérationnel",
+    });
+  } catch (err) {
+    console.error("❌ Error generating message:", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 app.listen(PORT, () => console.log("Server running on port " + PORT));
