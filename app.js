@@ -88,5 +88,6 @@ return res.json({
   debug: "User loaded from Supabase",
   user,
 });
+  });
 
 app.listen(PORT, () => console.log("Server running on port " + PORT));
