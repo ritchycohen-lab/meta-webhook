@@ -80,7 +80,76 @@ if (!user) {
   return res.status(404).json({ error: "User not found" });
 }
 
-console.log("✅ User loaded:", user);
+// 2. Construire le prompt dynamique
+const prompt = `
+Tu es UlpanCoach, un coach bienveillant qui aide un élève à apprendre l'hébreu.
+Voici les infos sur l'utilisateur :
+
+- Nom : ${user.first_name || "non renseigné"}
+- Niveau : ${user.level || "débutant"}
+- Objectif : ${user.objective || "non spécifié"}
+- Style de coach : ${user.coach_style || "bienveillant"}
+
+Génère un message WhatsApp court (3–5 lignes) :
+- motivant
+- personnalisé
+- avec un mini exercice simple et faisable en 2 minutes.
+- ton très humain (pas robot)
+
+Réponds uniquement avec le message final, pas de tags, pas d'explications.
+`;
+
+// 3. Appel OpenAI
+try {
+  const completion = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
+    },
+    body: JSON.stringify({
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: prompt }]
+    })
+  });
+
+  const data = await completion.json();
+
+  if (!completion.ok) {
+    console.error("❌ OpenAI API error:", data);
+    return res.status(500).json({ error: "OpenAI request failed" });
+  }
+
+  const finalMessage = data.choices?.[0]?.message?.content || null;
+
+  if (!finalMessage) {
+    return res.status(500).json({ error: "No message generated" });
+  }
+
+  // 4. Sauvegarde dans Supabase
+  const { error: insertErr } = await supabase
+    .from("messages")
+    .insert({
+      user_id,
+      content: finalMessage,
+      source: "daily"
+    });
+
+  if (insertErr) {
+    console.error("❌ Supabase insert error:", insertErr);
+  }
+
+  // 5. Retourner à Make
+  return res.json({
+    status: "ok",
+    message: finalMessage
+  });
+
+} catch (err) {
+  console.error("❌ Error generating message:", err);
+  return res.status(500).json({ error: "Internal server error" });
+}
+
 
 // TEMP: réponse de test
 return res.json({
