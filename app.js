@@ -2,6 +2,7 @@ import express from "express";
 import fetch from "node-fetch";
 import { createClient } from "@supabase/supabase-js";
 
+// --- SUPABASE ---
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -10,9 +11,11 @@ const supabase = createClient(
 const app = express();
 app.use(express.json());
 
-const VERIFY_TOKEN = "ulpancoach2025";
+const VERIFY_TOKEN = process.env.VERIFY_TOKEN || "ulpancoach2025";
 
-// Vérification du webhook Meta
+// ------------------------------------------------------
+// 1) VERIFICATION WEBHOOK META
+// ------------------------------------------------------
 app.get("/", (req, res) => {
   const mode = req.query["hub.mode"];
   const token = req.query["hub.verify_token"];
@@ -26,7 +29,9 @@ app.get("/", (req, res) => {
   }
 });
 
-// Réception des messages et redirection vers Make
+// ------------------------------------------------------
+// 2) RECEPTION D'ÉVÉNEMENTS META -> REDIRECTION VERS MAKE
+// ------------------------------------------------------
 app.post("/", async (req, res) => {
   console.log("New event received:", JSON.stringify(req.body, null, 2));
 
@@ -52,8 +57,9 @@ app.post("/", async (req, res) => {
   res.sendStatus(200);
 });
 
-const PORT = process.env.PORT || 3000;
-// Endpoint pour générer un message UlpanCoach (V0)
+// ------------------------------------------------------
+// 3) GENERATE MESSAGE ULPANCOACH
+// ------------------------------------------------------
 app.post("/generate-message", async (req, res) => {
   const { user_id } = req.body;
 
@@ -63,25 +69,27 @@ app.post("/generate-message", async (req, res) => {
 
   console.log("🆕 Generate message for user:", user_id);
 
- // 1. Récupérer le user dans Supabase
-const { data: user, error } = await supabase
-  .from("users")
-  .select("*")
-  .eq("id", user_id)
-  .single();
+  // 1. Récupérer l'utilisateur
+  const { data: user, error } = await supabase
+    .from("users")
+    .select("*")
+    .eq("id", user_id)
+    .single();
 
-if (error) {
-  console.error("❌ Supabase user fetch error:", error);
-  return res.status(500).json({ error: "Failed to fetch user" });
-}
+  if (error) {
+    console.error("❌ Supabase user fetch error:", error);
+    return res.status(500).json({ error: "Failed to fetch user" });
+  }
 
-if (!user) {
-  console.error("❌ User not found in Supabase");
-  return res.status(404).json({ error: "User not found" });
-}
+  if (!user) {
+    console.error("❌ User not found in Supabase");
+    return res.status(404).json({ error: "User not found" });
+  }
 
-// 2. Construire le prompt dynamique
-const prompt = `
+  console.log("✅ User loaded:", user);
+
+  // 2. Construire le prompt
+  const prompt = `
 Tu es UlpanCoach, un coach bienveillant qui aide un élève à apprendre l'hébreu.
 Voici les infos sur l'utilisateur :
 
@@ -93,100 +101,69 @@ Voici les infos sur l'utilisateur :
 Génère un message WhatsApp court (3–5 lignes) :
 - motivant
 - personnalisé
-- avec un mini exercice simple et faisable en 2 minutes.
-- ton très humain (pas robot)
+- avec un mini exercice simple
+- ton très humain
 
-Réponds uniquement avec le message final, pas de tags, pas d'explications.
+Réponds uniquement avec le message final, sans balises.
 `;
 
-// 3. Appel OpenAI
-try {
-  const completion = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
-    },
-    body: JSON.stringify({
-      model: "gpt-4o-mini",
-      messages: [{ role: "user", content: prompt }]
-    })
-  });
-
-  const data = await completion.json();
-
-  if (!completion.ok) {
-    console.error("❌ OpenAI API error:", data);
-    return res.status(500).json({ error: "OpenAI request failed" });
-  }
-
-  const finalMessage = data.choices?.[0]?.message?.content || null;
-
-  if (!finalMessage) {
-    return res.status(500).json({ error: "No message generated" });
-  }
-
-  // 4. Sauvegarde dans Supabase
-  const { error: insertErr } = await supabase
-    .from("messages")
-    .insert({
-      user_id,
-      content: finalMessage,
-      source: "daily"
+  try {
+    // 3. Appel OpenAI
+    const completion = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [{ role: "user", content: prompt }],
+      }),
     });
 
-  if (insertErr) {
-    console.error("❌ Supabase insert error:", insertErr);
+    const ai = await completion.json();
+
+    if (!completion.ok) {
+      console.error("❌ OpenAI API error:", ai);
+      return res.status(500).json({ error: "OpenAI request failed" });
+    }
+
+    const finalMessage = ai.choices?.[0]?.message?.content?.trim() || null;
+
+    if (!finalMessage) {
+      return res.status(500).json({ error: "No message generated" });
+    }
+
+    console.log("🔥 Message généré :", finalMessage);
+
+    // 4. Sauvegarde DB
+    const { error: insertErr } = await supabase
+      .from("messages")
+      .insert({
+        user_id,
+        content: finalMessage,
+        source: "daily",
+      });
+
+    if (insertErr) {
+      console.error("❌ Supabase insert error:", insertErr);
+    }
+
+    // 5. Retour à Make
+    return res.json({
+      status: "ok",
+      message: finalMessage,
+    });
+
+  } catch (err) {
+    console.error("❌ Error generating message:", err);
+    return res.status(500).json({ error: "Internal server error" });
   }
-// 2. Construire le prompt
-const prompt = `
-Tu es le coach personnel d’hébreu de l’utilisateur.
-Niveau : ${user.level}
-Objectif : ${user.goal}
-Coach : ${user.coach}
-Ville : ${user.city}, Fuseau horaire : ${user.timezone}
-
-Génère un message d’apprentissage court, motivant, avec 2 mots de vocabulaire utiles.
-Format attendu : texte simple.
-`;
-
-// 3. Appel à OpenAI
-const openaiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-  },
-  body: JSON.stringify({
-    model: "gpt-4o-mini",
-    messages: [
-      { role: "system", content: "Tu es un coach d’ulpan bienveillant et motivant." },
-      { role: "user", content: prompt }
-    ],
-  }),
 });
 
-const aiData = await openaiResponse.json();
+// ------------------------------------------------------
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () =>
+  console.log("🚀 Server running on port " + PORT)
+);
 
-if (!aiData.choices || !aiData.choices[0]) {
-  console.error("❌ OpenAI response error:", aiData);
-  return res.status(500).json({ error: "OpenAI error" });
-}
-
-// 4. Résultat final
-const finalMessage = aiData.choices[0].message.content.trim();
-console.log("🔥 Message généré :", finalMessage);
-
-  // 5. Retourner à Make
-  return res.json({
-    status: "ok",
-    message: finalMessage
-  });
-
-} catch (err) {
-  console.error("❌ Error generating message:", err);
-  return res.status(500).json({ error: "Internal server error" });
-}
-  });
-
-app.listen(PORT, () => console.log("Server running on port " + PORT));
