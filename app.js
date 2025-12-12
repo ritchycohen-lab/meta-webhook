@@ -138,6 +138,44 @@ try {
   if (insertErr) {
     console.error("❌ Supabase insert error:", insertErr);
   }
+// 2. Construire le prompt
+const prompt = `
+Tu es le coach personnel d’hébreu de l’utilisateur.
+Niveau : ${user.level}
+Objectif : ${user.goal}
+Coach : ${user.coach}
+Ville : ${user.city}, Fuseau horaire : ${user.timezone}
+
+Génère un message d’apprentissage court, motivant, avec 2 mots de vocabulaire utiles.
+Format attendu : texte simple.
+`;
+
+// 3. Appel à OpenAI
+const openaiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+  },
+  body: JSON.stringify({
+    model: "gpt-4o-mini",
+    messages: [
+      { role: "system", content: "Tu es un coach d’ulpan bienveillant et motivant." },
+      { role: "user", content: prompt }
+    ],
+  }),
+});
+
+const aiData = await openaiResponse.json();
+
+if (!aiData.choices || !aiData.choices[0]) {
+  console.error("❌ OpenAI response error:", aiData);
+  return res.status(500).json({ error: "OpenAI error" });
+}
+
+// 4. Résultat final
+const finalMessage = aiData.choices[0].message.content.trim();
+console.log("🔥 Message généré :", finalMessage);
 
   // 5. Retourner à Make
   return res.json({
