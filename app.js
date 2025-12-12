@@ -73,7 +73,7 @@ app.post("/generate-message", async (req, res) => {
   const { data: user, error } = await supabase
     .from("users")
     .select("*")
-    .eq("id", user_id)
+    .eq("user_id", user_id)
     .single();
 
   if (error) {
