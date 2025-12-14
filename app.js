@@ -2,19 +2,24 @@ import express from "express";
 import fetch from "node-fetch";
 import { createClient } from "@supabase/supabase-js";
 
-// --- SUPABASE ---
+// ------------------------------------------------------
+// SUPABASE (utilisé ailleurs, PAS dans la traduction V0)
+// ------------------------------------------------------
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
+// ------------------------------------------------------
+// APP INIT
+// ------------------------------------------------------
 const app = express();
 app.use(express.json());
 
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN || "ulpancoach2025";
 
 // ------------------------------------------------------
-// 1) VERIFICATION WEBHOOK META
+// 1) VERIFICATION WEBHOOK META (OBLIGATOIRE)
 // ------------------------------------------------------
 app.get("/", (req, res) => {
   const mode = req.query["hub.mode"];
@@ -22,18 +27,18 @@ app.get("/", (req, res) => {
   const challenge = req.query["hub.challenge"];
 
   if (mode === "subscribe" && token === VERIFY_TOKEN) {
-    console.log("WEBHOOK VERIFIED");
-    res.status(200).send(challenge);
-  } else {
-    res.sendStatus(403);
+    console.log("✅ WEBHOOK VERIFIED");
+    return res.status(200).send(challenge);
   }
+
+  return res.sendStatus(403);
 });
 
 // ------------------------------------------------------
-// 2) RECEPTION D'ÉVÉNEMENTS META -> REDIRECTION VERS MAKE
+// 2) RECEPTION DES EVENTS META → REDIRECTION MAKE
 // ------------------------------------------------------
 app.post("/", async (req, res) => {
-  console.log("New event received:", JSON.stringify(req.body, null, 2));
+  console.log("📩 New Meta event received");
 
   try {
     const response = await fetch(
@@ -41,125 +46,110 @@ app.post("/", async (req, res) => {
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(req.body),
+        body: JSON.stringify(req.body)
       }
     );
 
     if (!response.ok) {
-      console.error("Forwarding failed:", response.statusText);
+      console.error("❌ Forwarding to Make failed");
     } else {
-      console.log("Forwarded successfully to Make");
+      console.log("➡️ Event forwarded to Make");
     }
   } catch (err) {
-    console.error("Error forwarding to Make:", err.message);
+    console.error("❌ Error forwarding to Make:", err.message);
   }
 
-  res.sendStatus(200);
+  return res.sendStatus(200);
 });
 
 // ------------------------------------------------------
-// 3) GENERATE MESSAGE ULPANCOACH
+// 3) GENERATE MESSAGE — TRADUCTION ULPANCOACH V0
 // ------------------------------------------------------
 app.post("/generate-message", async (req, res) => {
-  const { user_id } = req.body;
+  try {
+    const { incoming_message, level, context } = req.body || {};
 
-  if (!user_id) {
-    return res.status(400).json({ error: "Missing user_id" });
-  }
+    // Sécurité stricte V0
+    if (context !== "free_message" || !incoming_message) {
+      return res.status(400).json({
+        reply: "Invalid context"
+      });
+    }
 
-  console.log("🆕 Generate message for user:", user_id);
+    // Limite 4 mots
+    const wordCount = String(incoming_message)
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean).length;
 
-  // 1. Récupérer l'utilisateur
-  const { data: user, error } = await supabase
-    .from("users")
-    .select("*")
-    .eq("user_id", user_id)
-    .single();
+    if (wordCount > 4) {
+      return res.json({
+        reply: "Je ne peux traduire que des mots ou des expressions jusqu’à 4 mots."
+      });
+    }
 
-  if (error) {
-    console.error("❌ Supabase user fetch error:", error);
-    return res.status(500).json({ error: "Failed to fetch user" });
-  }
+    // Prompt Render V0 (verrouillé)
+    const systemPrompt = `
+Tu es UlpanCoach – Traducteur enrichi.
 
-  if (!user) {
-    console.error("❌ User not found in Supabase");
-    return res.status(404).json({ error: "User not found" });
-  }
-
-  console.log("✅ User loaded:", user);
-
-  // 2. Construire le prompt
-  const prompt = `
-Tu es UlpanCoach, un coach bienveillant qui aide un élève à apprendre l'hébreu.
-Voici les infos sur l'utilisateur :
-
-- Nom : ${user.first_name || "non renseigné"}
-- Niveau : ${user.level || "débutant"}
-- Objectif : ${user.objective || "non spécifié"}
-- Style de coach : ${user.coach_style || "bienveillant"}
-
-Génère un message WhatsApp court (3–5 lignes) :
-- motivant
-- personnalisé
-- avec un mini exercice simple
-- ton très humain
-
-Réponds uniquement avec le message final, sans balises.
+Règles absolues :
+- Tu traduis uniquement des mots ou expressions jusqu’à 4 mots.
+- Si la traduction est français → hébreu, ajoute toujours les nekoudot.
+- Tu ne poses jamais de questions.
+- Tu ne fais pas de coaching.
+- Réponse courte, lisible sur WhatsApp.
+- Maximum 5–6 lignes.
+- Tu ajoutes une micro-explication (1 phrase max).
+- Tu ajoutes une mini phrase humaine (1 phrase max, optionnelle).
 `;
 
-  try {
-    // 3. Appel OpenAI
-    const completion = await fetch("https://api.openai.com/v1/chat/completions", {
+    const userPrompt = `
+Mot ou expression à traduire :
+"${incoming_message}"
+
+Niveau utilisateur : ${level || "faux_debutant"}
+
+Respecte strictement les règles.
+`;
+
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
         Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        "Content-Type": "application/json"
       },
       body: JSON.stringify({
         model: "gpt-4o-mini",
-        messages: [{ role: "user", content: prompt }],
-      }),
+        messages: [
+          { role: "system", content: systemPrompt.trim() },
+          { role: "user", content: userPrompt.trim() }
+        ],
+        temperature: 0.4
+      })
     });
 
-    const ai = await completion.json();
+    const data = await response.json();
+    const reply = data?.choices?.[0]?.message?.content?.trim();
 
-    if (!completion.ok) {
-      console.error("❌ OpenAI API error:", ai);
-      return res.status(500).json({ error: "OpenAI request failed" });
-    }
-
-    const finalMessage = ai.choices?.[0]?.message?.content?.trim() || null;
-
-    if (!finalMessage) {
-      return res.status(500).json({ error: "No message generated" });
-    }
-
-    console.log("🔥 Message généré :", finalMessage);
-
-    // 4. Sauvegarde DB
-    const { error: insertErr } = await supabase
-      .from("messages")
-      .insert({
-        user_id,
-        content: finalMessage,
-        source: "daily",
-      });
-
-    if (insertErr) {
-      console.error("❌ Supabase insert error:", insertErr);
-    }
-
-    // 5. Retour à Make
     return res.json({
-      status: "ok",
-      message: finalMessage,
+      reply: reply || "Une erreur est survenue."
     });
 
   } catch (err) {
-    console.error("❌ Error generating message:", err);
-    return res.status(500).json({ error: "Internal server error" });
+    console.error("❌ GENERATE MESSAGE ERROR:", err);
+    return res.status(500).json({
+      reply: "Une erreur est survenue."
+    });
   }
 });
+
+// ------------------------------------------------------
+// SERVER START
+// ------------------------------------------------------
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () =>
+  console.log("🚀 Server running on port " + PORT)
+);
 
 // ------------------------------------------------------
 const PORT = process.env.PORT || 3000;
