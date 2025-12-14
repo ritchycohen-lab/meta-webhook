@@ -65,7 +65,16 @@ app.post("/", async (req, res) => {
 // ------------------------------------------------------
 // 3) GENERATE MESSAGE — TRADUCTION ULPANCOACH V0
 // ------------------------------------------------------
+// ------------------------------------------------------
+// 3) GENERATE MESSAGE — TRADUCTION ULPANCOACH V0
+// ------------------------------------------------------
 app.post("/generate-message", async (req, res) => {
+
+  // ✅ LOGS D’ENTRÉE (OBLIGATOIRES)
+  console.log("📥 /generate-message CALLED");
+  console.log("📦 PAYLOAD REÇU :");
+  console.log(JSON.stringify(req.body, null, 2));
+
   try {
     const { incoming_message, level, context } = req.body || {};
 
@@ -75,6 +84,7 @@ app.post("/generate-message", async (req, res) => {
         reply: "Invalid context"
       });
     }
+
 
     // Limite 4 mots
     const wordCount = String(incoming_message)
